@@ -1,46 +1,56 @@
 package com.example.util;
 
+import java.security.Key;
+import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import com.example.authen.UserPrincipal;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nimbusds.jose.JWSAlgorithm;
-import com.nimbusds.jose.JWSHeader;
-import com.nimbusds.jose.JWSSigner;
-import com.nimbusds.jose.JWSVerifier;
-import com.nimbusds.jose.crypto.MACSigner;
-import com.nimbusds.jose.crypto.MACVerifier;
-import com.nimbusds.jose.shaded.json.JSONObject;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
+import com.example.entity.UserPrincipal;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtBuilder;
+import io.jsonwebtoken.JwtParserBuilder;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.UnsupportedJwtException;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
 
 @Component
-
 public class JwtUtil {
 
 	private static Logger logger = LoggerFactory.getLogger(JwtUtil.class);
-	private static final String DATA = "data";
-	private static final String SECRET = "SECRET_KEY!_2A9ED2E12A7D35E13D633838B2BB3";
+	private static final String SECRET_KEY = "vrerfewfewkpokpokfwdcegrgebveberberberberbberberbjj";
+	// milliseconds
+	private static final long EXPIRE_DURATION = 24 * 60 * 60 * 1000;
 
-	public String generateToken(UserPrincipal user) {
+	private static JwtBuilder jwtBuilder = Jwts.builder();
+	private static JwtParserBuilder jwtParserBuilder = Jwts.parserBuilder();
+
+	public String generateAccessToken(UserPrincipal user) {
 		String token = null;
+
 		try {
-			JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder();
+			Map<String, Object> rawMap = new HashMap<>();
+			rawMap.put("id", user.getId());
+			rawMap.put("username", user.getUsername());
+			rawMap.put("authorities", user.getAuthorities());
 
-			builder.claim(DATA, user);
-			builder.expirationTime(generateExpirationDate());
-			JWTClaimsSet claimsSet = builder.build();
+			jwtBuilder.setClaims(rawMap);
+			jwtBuilder.setExpiration(
+					new Date(System.currentTimeMillis() + EXPIRE_DURATION));
+			jwtBuilder.setIssuedAt(new Date());
+			jwtBuilder.signWith(getSigningKey(), SignatureAlgorithm.HS256);
 
-			SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256),
-					claimsSet);
-			JWSSigner signer = new MACSigner(SECRET.getBytes());
-			signedJWT.sign(signer);
+			token = jwtBuilder.compact();
 
-			token = signedJWT.serialize();
 		} catch (Exception e) {
 			logger.error(e.getMessage());
 		}
@@ -51,41 +61,49 @@ public class JwtUtil {
 		return new Date(System.currentTimeMillis() + 864000000);
 	}
 
-	private JWTClaimsSet getClaimsFromToken(String token) {
-		JWTClaimsSet claims = null;
+	private Key getSigningKey() {
+		byte[] keyBytes = Decoders.BASE64.decode(SECRET_KEY);
+		return Keys.hmacShaKeyFor(keyBytes);
+	}
+
+	public boolean verifyAccessToken(String token) {
 		try {
-			SignedJWT signedJWT = SignedJWT.parse(token);
-			JWSVerifier verifier = new MACVerifier(SECRET.getBytes());
-			if (signedJWT.verify(verifier)) {
-				claims = signedJWT.getJWTClaimsSet();
-			}
-		} catch (Exception e) {
-			logger.error(e.getMessage());
+			jwtParserBuilder.setSigningKey(getSigningKey()).build().parseClaimsJws(token);
+			return true;
+		} catch (ExpiredJwtException ex) {
+			logger.error("JWT expired", ex.getMessage());
+		} catch (IllegalArgumentException ex) {
+			logger.error("Token is null, empty or only whitespace", ex.getMessage());
+		} catch (MalformedJwtException ex) {
+			logger.error("JWT is invalid", ex);
+		} catch (UnsupportedJwtException ex) {
+			logger.error("JWT is not supported", ex);
+		} catch (Exception ex) {
+			logger.error("Signature validation failed");
 		}
-		return claims;
+
+		return false;
+	}
+
+	private Claims parseClaims(String token) {
+		return jwtParserBuilder.setSigningKey(getSigningKey()).build()
+				.parseClaimsJws(token).getBody();
 	}
 
 	public UserPrincipal getUserFromToken(String token) {
-		UserPrincipal user = null;
+		UserPrincipal user = new UserPrincipal();
 		try {
-			JWTClaimsSet claims = getClaimsFromToken(token);
-			if (claims != null && isTokenExpired(claims)) {
-				JSONObject jsonObject = (JSONObject) claims.getClaim(DATA);
-				user = new ObjectMapper().readValue(jsonObject.toJSONString(),
-						UserPrincipal.class);
+			Claims claims = parseClaims(token);
+			if (claims != null) {
+				user.setId(Long.valueOf(claims.get("id").toString()));
+				user.setUsername((String) claims.get("username"));
+				user.setAuthorities((Collection) claims.get("authorities"));
 			}
 		} catch (Exception e) {
 			logger.error(e.getMessage());
+
 		}
 		return user;
-	}
-
-	private Date getExpirationDateFromToken(JWTClaimsSet claims) {
-		return claims != null ? claims.getExpirationTime() : new Date();
-	}
-
-	private boolean isTokenExpired(JWTClaimsSet claims) {
-		return getExpirationDateFromToken(claims).after(new Date());
 	}
 
 }

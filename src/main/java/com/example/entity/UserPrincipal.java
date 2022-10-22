@@ -1,16 +1,22 @@
-package com.example.authen;
+package com.example.entity;
 
 import java.util.Collection;
 
 import org.springframework.security.core.userdetails.UserDetails;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.ToString;
 
 @Getter
 @Setter
+@AllArgsConstructor
+@NoArgsConstructor
+@ToString
 public class UserPrincipal implements UserDetails {
-	private Long userId;
+	private Long id;
 	private String username;
 	private String password;
 	private Collection authorities;
@@ -34,4 +40,5 @@ public class UserPrincipal implements UserDetails {
 	public boolean isEnabled() {
 		return false;
 	}
+
 }

@@ -1,7 +1,6 @@
 package com.example.filter;
 
 import java.io.IOException;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -17,12 +16,10 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
+import org.springframework.util.ObjectUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.example.authen.UserPrincipal;
-import com.example.entity.Token;
-import com.example.service.TokenService;
+import com.example.entity.UserPrincipal;
 import com.example.util.JwtUtil;
 
 @Component
@@ -31,33 +28,52 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 	@Autowired
 	private JwtUtil jwtUtil;
 
-	@Autowired
-	private TokenService verificationTokenService;
-
 	@Override
 	protected void doFilterInternal(HttpServletRequest request,
 			HttpServletResponse response, FilterChain filterChain)
 			throws ServletException, IOException {
-
-		final String authorizationHeader = request.getHeader("Authorization");
-
-		UserPrincipal user = null;
-		Token token = null;
-
-		if (StringUtils.hasText(authorizationHeader)
-				&& authorizationHeader.startsWith("Token ")) {
-			String jwt = authorizationHeader.substring(6);
-
-			user = jwtUtil.getUserFromToken(jwt);
-			token = verificationTokenService.findByToken(jwt);
+		// TODO Auto-generated method stub
+		if (!hasAuthorizationBearer(request)) {
+			filterChain.doFilter(request, response);
+			return;
 		}
 
-		if (null != user && null != token && token.getTokenExpDate().after(new Date())) {
+		String token = getAccessToken(request);
 
+		if (!jwtUtil.verifyAccessToken(token)) {
+			filterChain.doFilter(request, response);
+			return;
+		}
+
+		setAuthenticationContext(token, request);
+		filterChain.doFilter(request, response);
+
+	}
+
+	private boolean hasAuthorizationBearer(HttpServletRequest request) {
+		String header = request.getHeader("Authorization");
+		if (ObjectUtils.isEmpty(header) || !header.startsWith("Bearer")) {
+			return false;
+		}
+
+		return true;
+	}
+
+	private String getAccessToken(HttpServletRequest request) {
+		String header = request.getHeader("Authorization");
+		String token = header.split(" ")[1].trim();
+		return token;
+	}
+
+	@SuppressWarnings("unchecked")
+	private void setAuthenticationContext(String token, HttpServletRequest request) {
+		UserPrincipal user = jwtUtil.getUserFromToken(token);
+		if (user != null) {
 			Set<GrantedAuthority> authorities = new HashSet<>();
 
-			user.getAuthorities().forEach(
-					p -> authorities.add(new SimpleGrantedAuthority((String) p)));
+			user.getAuthorities().forEach(authority -> {
+				authorities.add(new SimpleGrantedAuthority(authority.toString()));
+			});
 
 			UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
 					user, null, authorities);
@@ -67,6 +83,7 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 
 			SecurityContextHolder.getContext().setAuthentication(authentication);
 		}
-		filterChain.doFilter(request, response);
+
 	}
+
 }

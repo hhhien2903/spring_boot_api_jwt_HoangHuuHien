@@ -1,10 +1,12 @@
 package com.example.service;
 
-import com.example.authen.UserPrincipal;
 import com.example.entity.User;
+import com.example.entity.UserPrincipal;
 
 public interface UserService {
-	User createUser(User user);
+	User save(User user) throws Exception;
 
-	UserPrincipal findByUsername(String username);
+	UserPrincipal signInWithUsernameAndPassword(String username, String password)
+			throws Exception;
+
 }
